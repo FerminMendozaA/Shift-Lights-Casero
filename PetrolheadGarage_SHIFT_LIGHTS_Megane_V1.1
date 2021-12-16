@@ -41,6 +41,7 @@ unsigned long periodo = 30000000;           //Variable donde guardaremos la dura
 unsigned long millis_anteriores = 0;        //Variable donde guardaremos el tiempo anterior para el parpadeo
 boolean onoff = false;                      //Variable para el parpadeo de LEDs. Se utilizará para cambiar de estado la tira de LEDs entre encendido y apagado
 actualizar = false;							//Variable que controla si se hay que actualizar el estado de los leds porque han entrado en la interrupcion
+unsigned long millis_actuales		   //Almacenamos los ms actuales para el parpadeo de los leds
 
 //unsigned long contadorloop = 0;           //Variable utilizada para saber los loops/s que realiza el microcontrolador. (Solo utilizar para observar el funcionamiento del codigo)
 //unsigned long millis_anterioresloop = 0;  //Variable utilizada para saber los loops/s que realiza el microcontrolador. (Solo utilizar para observar el funcionamiento del codigo)
@@ -51,23 +52,25 @@ void setup()
   pixels.clear();                           //Apagamos todos los LED
  // Serial.begin(115200);                     //Iniciamos puerto serie.(Solo utilizar para observar el funcionamiento del codigo por puerto serie)
   attachInterrupt(0, RPM, FALLING);          //Activamos la interrupcion 0 (pin 2 en el Arduino)
-  actualizar=true;
 }
 
 void RPM()                                  //Funcion a realizar en cada interrupcion externa del pin 2
 {
   currentmicros = micros();                 //Almacenamos los us transcurridos en la variable currentmicros
-  periodo = currentmicros - previousmicros; //El periodo de la señal serán los us actuales menos los us anteriores
-  previousmicros = currentmicros;           //Igualamos us actuales a us anteriores para calcular el proximo periodo
+  actualizar=true;
 } 
 
 void loop() 
 {
 	if(actualizar)
 	{
-		actualizar=false;
-	 unsigned long millis_actuales = millis();  //Almacenamos los ms actuales para el parpadeo de los leds
-	  rpm = 30000000/periodo;                   //Calculamos las rpm. La señal en el Megane es ralenti~750rpm = 25Hz, 3000rpm = 100Hz ---> 1Hz = 30rpm. "periodo" estará en us
+	
+	actualizar=false;
+	periodo = currentmicros - previousmicros; //El periodo de la señal serán los us actuales menos los us anteriores
+  	previousmicros = currentmicros;           //Igualamos us actuales a us anteriores para calcular el proximo periodo
+	
+	millis_actuales = millis();  //Almacenamos los ms actuales para el parpadeo de los leds
+	rpm = 30000000/periodo;                   //Calculamos las rpm. La señal en el Megane es ralenti~750rpm = 25Hz, 3000rpm = 100Hz ---> 1Hz = 30rpm. "periodo" estará en us
 	   //Serial.print(periodo);                //Mandamos al puerto serie el valor del periodo entre señales en us
 	   //Serial.print(" us    ");
 	  //Serial.print(rpm);                    //Mandamos al puerto serie el valor de rpm
