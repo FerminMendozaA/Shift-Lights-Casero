@@ -1,0 +1,398 @@
+  /*SHIFT LIGHTS / CONTADOR RPM    PARA MEGANE 1.6 16V  by PetrolheadGarage*/
+
+//Este proyecto es un contador de rpm para fabricar unas luces de cambio con una tira LED direccionable
+//Se ha realizado para una tira de 18 LEDs RGB WS2812B
+//La señal de RPM en este caso se cogerá de la señal del tacómetro que envia la ECU al cuadro de instrumentos
+//En el caso del Megane esta señal es una onda cuadrada que varia su frecuencia 1Hz son 30 rpm ----> a 3000 rpm la señal es de 100Hz (2 Pulsos por revolucion del cigüeñal)
+
+//PetrolheadGarage ni ninguno de sus integrantes será responsable de cualquier daño producido por este código, tutorial y/o vídeo relacionado
+
+
+
+#define RPM1 5100                           //rpm para encender el 1er LED
+#define RPM2 5200                           //rpm para encender el 2o LED
+#define RPM3 5300                           //rpm para encender el 3er LED
+#define RPM4 5400                           //rpm para encender el 4o LED
+#define RPM5 5500                           //rpm para encender el 5o LED
+#define RPM6 5600                           //rpm para encender el 6o LED
+#define RPM7 5700                           //rpm para encender el 7o LED
+#define RPM8 5800                           //rpm para encender el 8o LED
+#define RPM9 5900                           //rpm para encender el 9o LED
+#define RPM10 6000                          //rpm para encender todos los LED fijos violeta
+#define RPM11 6300                          //rpm para encender todos los LED parpadeando violeta
+#define RPM12 6500                          //ESTO ES POR FRAN!(Que no sabe reducir marcha)CORTE DE RPM DEL MOTOR--->rpm para encender todos los LED parpadeando rojo. Si reduciendo nos pasamos del corte del coche
+#define RPM13 8000                          //rpm mayor que el corte del motor
+
+#define PARPADEO 55                         //ms de duracion del parpadeo 
+
+#include <Adafruit_NeoPixel.h>              //Incluimos libreria Neopixel de Adafruit
+#ifdef __AVR__                              //Necesario para la tira de led con Arduino
+  #include <avr/power.h>
+#endif
+#define PIN            6                    //Pin de datos al que conectamos la tira led
+#define NUMPIXELS      20                   //numero de leds que vamos a controlar (1er led sera el numero 0 y ultimo sera NUMPIXELS-1)
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800); //Creamos el objeto "pixels" para la tira de led WS2812B
+
+int rpm = 0;                                //Variable donde se guardarán las rpm
+unsigned long previousmicros = 0;           //Variable donde guardaremos el tiempo anterior para contabilizar la frecuencia
+unsigned long currentmicros = 0;            //Variable donde guardaremos el tiempo actual para contabilizar la frecuencia
+unsigned long periodo = 30000000;           //Variable donde guardaremos la duracion entre interrupciones. Iniciamos en 30000000 para que el primer calculo de rpm no sea infinito
+unsigned long millis_anteriores = 0;        //Variable donde guardaremos el tiempo anterior para el parpadeo
+boolean onoff = false;                      //Variable para el parpadeo de LEDs. Se utilizará para cambiar de estado la tira de LEDs entre encendido y apagado
+actualizar = false;							//Variable que controla si se hay que actualizar el estado de los leds porque han entrado en la interrupcion
+
+//unsigned long contadorloop = 0;           //Variable utilizada para saber los loops/s que realiza el microcontrolador. (Solo utilizar para observar el funcionamiento del codigo)
+//unsigned long millis_anterioresloop = 0;  //Variable utilizada para saber los loops/s que realiza el microcontrolador. (Solo utilizar para observar el funcionamiento del codigo)
+
+void setup() 
+{
+  pixels.begin();                           //Inicializamos la tira led
+  pixels.clear();                           //Apagamos todos los LED
+ // Serial.begin(115200);                     //Iniciamos puerto serie.(Solo utilizar para observar el funcionamiento del codigo por puerto serie)
+  attachInterrupt(0, RPM, FALLING);          //Activamos la interrupcion 0 (pin 2 en el Arduino)
+  actualizar=true;
+}
+
+void RPM()                                  //Funcion a realizar en cada interrupcion externa del pin 2
+{
+  currentmicros = micros();                 //Almacenamos los us transcurridos en la variable currentmicros
+  periodo = currentmicros - previousmicros; //El periodo de la señal serán los us actuales menos los us anteriores
+  previousmicros = currentmicros;           //Igualamos us actuales a us anteriores para calcular el proximo periodo
+} 
+
+void loop() 
+{
+	if(actualizar)
+	{
+		actualizar=false;
+	 unsigned long millis_actuales = millis();  //Almacenamos los ms actuales para el parpadeo de los leds
+	  rpm = 30000000/periodo;                   //Calculamos las rpm. La señal en el Megane es ralenti~750rpm = 25Hz, 3000rpm = 100Hz ---> 1Hz = 30rpm. "periodo" estará en us
+	   //Serial.print(periodo);                //Mandamos al puerto serie el valor del periodo entre señales en us
+	   //Serial.print(" us    ");
+	  //Serial.print(rpm);                    //Mandamos al puerto serie el valor de rpm
+	  //Serial.println(" rpm");
+
+	/*Contador de loops por segundo del codigo. (solo usar para observar el funcionamiento por puerto serie)*/
+
+	/*unsigned long millis_actualesloop = millis();
+	contadorloop++;                             //Contador de loops/s que realiza el microcontrolador. Solo para ver la velocidad de la que disponemos
+	if(millis_actualesloop-millis_anterioresloop>1000)  //Muestra los loops/s por el puerto serie
+	{
+	  Serial.print(contadorloop);               //Enviamos al puerto serie los loops/s que está realizando el microcontrolador
+	  Serial.println("  loops/s");
+	  millis_anterioresloop = millis_actualesloop;      //Igualamos millisactuales a millisanteriores para la proxima medicion de loops
+	  contadorloop = 0;                         //Reseteamos el contador para la próxima medición de loops
+	}*/
+
+	/*Empezamos con el encendido de leds dependiendo de las rpm*/
+
+	if (rpm<RPM1)                                  //Apagamos todos los LEDs con rpm menor que RPM1
+	  {
+		 pixels.clear();                           
+		 pixels.show();        
+	  }  
+	  
+	if (rpm >= RPM1+50 && rpm <RPM2)               //Dejamos 50rpm de histéresis para compensar las variaciones de lecturas. Encendemos 1 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,0,0));
+		 pixels.setPixelColor(3, pixels.Color(0,0,0));
+		 pixels.setPixelColor(4, pixels.Color(0,0,0));
+		 pixels.setPixelColor(5, pixels.Color(0,0,0));
+		 pixels.setPixelColor(6, pixels.Color(0,0,0));
+		 pixels.setPixelColor(7, pixels.Color(0,0,0));
+		 pixels.setPixelColor(8, pixels.Color(0,0,0));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0));
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(0,0,0));
+		 pixels.setPixelColor(13, pixels.Color(0,0,0));
+		 pixels.setPixelColor(14, pixels.Color(0,0,0));
+		 pixels.setPixelColor(15, pixels.Color(0,0,0));
+		 pixels.setPixelColor(16, pixels.Color(0,0,0));
+		 pixels.setPixelColor(17, pixels.Color(0,0,0));
+		 pixels.setPixelColor(18, pixels.Color(0,0,0));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }  
+
+	if (rpm >= RPM2+50 && rpm <RPM3)               //Encendemos 2 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,0,0));
+		 pixels.setPixelColor(4, pixels.Color(0,0,0));
+		 pixels.setPixelColor(5, pixels.Color(0,0,0));
+		 pixels.setPixelColor(6, pixels.Color(0,0,0));
+		 pixels.setPixelColor(7, pixels.Color(0,0,0));
+		 pixels.setPixelColor(8, pixels.Color(0,0,0));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0));
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(0,0,0));
+		 pixels.setPixelColor(13, pixels.Color(0,0,0));
+		 pixels.setPixelColor(14, pixels.Color(0,0,0));
+		 pixels.setPixelColor(15, pixels.Color(0,0,0));
+		 pixels.setPixelColor(16, pixels.Color(0,0,0));
+		 pixels.setPixelColor(17, pixels.Color(0,0,0));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }    
+
+	if (rpm >= RPM3+50 && rpm <RPM4)               //Encendemos 3 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,60,7));
+		 pixels.setPixelColor(4, pixels.Color(0,0,0));
+		 pixels.setPixelColor(5, pixels.Color(0,0,0));
+		 pixels.setPixelColor(6, pixels.Color(0,0,0));
+		 pixels.setPixelColor(7, pixels.Color(0,0,0));
+		 pixels.setPixelColor(8, pixels.Color(0,0,0));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0)); 
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(0,0,0));
+		 pixels.setPixelColor(13, pixels.Color(0,0,0));
+		 pixels.setPixelColor(14, pixels.Color(0,0,0));
+		 pixels.setPixelColor(15, pixels.Color(0,0,0));
+		 pixels.setPixelColor(16, pixels.Color(0,0,0));
+		 pixels.setPixelColor(17, pixels.Color(0,60,7));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7)); 
+		 pixels.show();                
+	  }    
+
+	if (rpm >= RPM4+50 && rpm <RPM5)               //Encendemos 4 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,60,7));
+		 pixels.setPixelColor(4, pixels.Color(60,5,0));
+		 pixels.setPixelColor(5, pixels.Color(0,0,0));
+		 pixels.setPixelColor(6, pixels.Color(0,0,0));
+		 pixels.setPixelColor(7, pixels.Color(0,0,0));
+		 pixels.setPixelColor(8, pixels.Color(0,0,0));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0));
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(0,0,0));
+		 pixels.setPixelColor(13, pixels.Color(0,0,0));
+		 pixels.setPixelColor(14, pixels.Color(0,0,0));
+		 pixels.setPixelColor(15, pixels.Color(0,0,0));
+		 pixels.setPixelColor(16, pixels.Color(60,5,0));
+		 pixels.setPixelColor(17, pixels.Color(0,60,7));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }
+
+	if (rpm >= RPM5+50 && rpm <RPM6)               //Encendemos 5 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,60,7));
+		 pixels.setPixelColor(4, pixels.Color(60,5,0));
+		 pixels.setPixelColor(5, pixels.Color(60,5,0));
+		 pixels.setPixelColor(6, pixels.Color(0,0,0));
+		 pixels.setPixelColor(7, pixels.Color(0,0,0));
+		 pixels.setPixelColor(8, pixels.Color(0,0,0));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0));
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(0,0,0));
+		 pixels.setPixelColor(13, pixels.Color(0,0,0));
+		 pixels.setPixelColor(14, pixels.Color(0,0,0));
+		 pixels.setPixelColor(15, pixels.Color(60,5,0));
+		 pixels.setPixelColor(16, pixels.Color(60,5,0));
+		 pixels.setPixelColor(17, pixels.Color(0,60,7));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }  
+
+	if (rpm >= RPM6+50 && rpm <RPM7)               //Encendemos 6 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,60,7));
+		 pixels.setPixelColor(4, pixels.Color(60,5,0));
+		 pixels.setPixelColor(5, pixels.Color(60,5,0));
+		 pixels.setPixelColor(6, pixels.Color(60,5,0));
+		 pixels.setPixelColor(7, pixels.Color(0,0,0));
+		 pixels.setPixelColor(8, pixels.Color(0,0,0));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0));
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(0,0,0));
+		 pixels.setPixelColor(13, pixels.Color(0,0,0));
+		 pixels.setPixelColor(14, pixels.Color(60,5,0));
+		 pixels.setPixelColor(15, pixels.Color(60,5,0));
+		 pixels.setPixelColor(16, pixels.Color(60,5,0));
+		 pixels.setPixelColor(17, pixels.Color(0,60,7));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }  
+
+	if (rpm >= RPM7+50 && rpm <RPM8)               //Encendemos 7 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,60,7));
+		 pixels.setPixelColor(4, pixels.Color(60,5,0));
+		 pixels.setPixelColor(5, pixels.Color(60,5,0));
+		 pixels.setPixelColor(6, pixels.Color(60,5,0));
+		 pixels.setPixelColor(7, pixels.Color(15,0,60));
+		 pixels.setPixelColor(8, pixels.Color(0,0,0));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0));
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(0,0,0));
+		 pixels.setPixelColor(13, pixels.Color(15,0,60));
+		 pixels.setPixelColor(14, pixels.Color(60,5,0));
+		 pixels.setPixelColor(15, pixels.Color(60,5,0));
+		 pixels.setPixelColor(16, pixels.Color(60,5,0));
+		 pixels.setPixelColor(17, pixels.Color(0,60,7));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }  
+
+	if (rpm >= RPM8+50 && rpm <RPM9)               //Encendemos 8 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,60,7));
+		 pixels.setPixelColor(4, pixels.Color(60,5,0));
+		 pixels.setPixelColor(5, pixels.Color(60,5,0));
+		 pixels.setPixelColor(6, pixels.Color(60,5,0));
+		 pixels.setPixelColor(7, pixels.Color(15,0,60));
+		 pixels.setPixelColor(8, pixels.Color(15,0,60));
+		 pixels.setPixelColor(9, pixels.Color(0,0,0));
+		 pixels.setPixelColor(11, pixels.Color(0,0,0));
+		 pixels.setPixelColor(12, pixels.Color(15,0,60));
+		 pixels.setPixelColor(13, pixels.Color(15,0,60));
+		 pixels.setPixelColor(14, pixels.Color(60,5,0));
+		 pixels.setPixelColor(15, pixels.Color(60,5,0));
+		 pixels.setPixelColor(16, pixels.Color(60,5,0));
+		 pixels.setPixelColor(17, pixels.Color(0,60,7));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }  
+
+	if (rpm >= RPM9+50 && rpm <RPM10)              //Encendemon 9 LED
+	  {
+		 pixels.setPixelColor(1, pixels.Color(0,60,7));
+		 pixels.setPixelColor(2, pixels.Color(0,60,7));
+		 pixels.setPixelColor(3, pixels.Color(0,60,7));
+		 pixels.setPixelColor(4, pixels.Color(60,5,0));
+		 pixels.setPixelColor(5, pixels.Color(60,5,0));
+		 pixels.setPixelColor(6, pixels.Color(60,5,0));
+		 pixels.setPixelColor(7, pixels.Color(15,0,60));
+		 pixels.setPixelColor(8, pixels.Color(15,0,60));
+		 pixels.setPixelColor(9, pixels.Color(15,0,60));
+		 pixels.setPixelColor(11, pixels.Color(15,0,60));
+		 pixels.setPixelColor(12, pixels.Color(15,0,60));
+		 pixels.setPixelColor(13, pixels.Color(15,0,60));
+		 pixels.setPixelColor(14, pixels.Color(60,5,0));
+		 pixels.setPixelColor(15, pixels.Color(60,5,0));
+		 pixels.setPixelColor(16, pixels.Color(60,5,0));
+		 pixels.setPixelColor(17, pixels.Color(0,60,7));
+		 pixels.setPixelColor(18, pixels.Color(0,60,7));
+		 pixels.setPixelColor(19, pixels.Color(0,60,7));  
+		 pixels.show();                
+	  }  
+
+	if (rpm >= RPM10+50 && rpm <RPM11)             //Encendemos todos los LED fijos
+	  {
+		 pixels.setPixelColor(1, pixels.Color(100,0,70));
+		 pixels.setPixelColor(2, pixels.Color(100,0,70));
+		 pixels.setPixelColor(3, pixels.Color(100,0,70));
+		 pixels.setPixelColor(4, pixels.Color(100,0,70));
+		 pixels.setPixelColor(5, pixels.Color(100,0,70));
+		 pixels.setPixelColor(6, pixels.Color(100,0,70));
+		 pixels.setPixelColor(7, pixels.Color(100,0,70));
+		 pixels.setPixelColor(8, pixels.Color(100,0,70));
+		 pixels.setPixelColor(9, pixels.Color(100,0,70));
+		 pixels.setPixelColor(11, pixels.Color(100,0,70));
+		 pixels.setPixelColor(12, pixels.Color(100,0,70));
+		 pixels.setPixelColor(13, pixels.Color(100,0,70));
+		 pixels.setPixelColor(14, pixels.Color(100,0,70));
+		 pixels.setPixelColor(15, pixels.Color(100,0,70));
+		 pixels.setPixelColor(16, pixels.Color(100,0,70));
+		 pixels.setPixelColor(17, pixels.Color(100,0,70));
+		 pixels.setPixelColor(18, pixels.Color(100,0,70));
+		 pixels.setPixelColor(19, pixels.Color(100,0,70));  
+		 pixels.show();                
+	  }  
+
+	if (rpm>=RPM11+50 && rpm<RPM12)                //Encendemos todos los LED parpadeando en violeta
+	  {
+		if(millis_actuales - millis_anteriores > PARPADEO)
+		{
+		 onoff = !onoff;
+		 millis_anteriores = millis_actuales;
+		  if(onoff == false)
+		  {
+		  pixels.setPixelColor(1, pixels.Color(150,0,105));
+		  pixels.setPixelColor(2, pixels.Color(150,0,105));
+		  pixels.setPixelColor(3, pixels.Color(150,0,105));
+		  pixels.setPixelColor(4, pixels.Color(150,0,105));
+		  pixels.setPixelColor(5, pixels.Color(150,0,105));
+		  pixels.setPixelColor(6, pixels.Color(150,0,105));
+		  pixels.setPixelColor(7, pixels.Color(150,0,105));
+		  pixels.setPixelColor(8, pixels.Color(150,0,105));
+		  pixels.setPixelColor(9, pixels.Color(150,0,105));
+		  pixels.setPixelColor(11, pixels.Color(150,0,105));
+		  pixels.setPixelColor(12, pixels.Color(150,0,105));
+		  pixels.setPixelColor(13, pixels.Color(150,0,105));
+		  pixels.setPixelColor(14, pixels.Color(150,0,105));
+		  pixels.setPixelColor(15, pixels.Color(150,0,105));
+		  pixels.setPixelColor(16, pixels.Color(150,0,105));
+		  pixels.setPixelColor(17, pixels.Color(150,0,105));
+		  pixels.setPixelColor(18, pixels.Color(150,0,105));
+		  pixels.setPixelColor(19, pixels.Color(150,0,105));  
+		  pixels.show();     
+		  } 
+		  else
+		  {
+		  pixels.clear();
+		  pixels.show();     
+		  }
+		}    
+	  } 
+	  
+	if (rpm>=RPM12+50 && rpm<RPM13)                //Encendemos todos los LED parapadeando en rojo
+	  {
+		if(millis_actuales - millis_anteriores > PARPADEO)
+		{
+		 onoff = !onoff;
+		 millis_anteriores = millis_actuales;
+		  if(onoff == false)
+		  {
+		  pixels.setPixelColor(1, pixels.Color(200,0,0));
+		  pixels.setPixelColor(2, pixels.Color(200,0,0));
+		  pixels.setPixelColor(3, pixels.Color(200,0,0));
+		  pixels.setPixelColor(4, pixels.Color(200,0,0));
+		  pixels.setPixelColor(5, pixels.Color(200,0,0));
+		  pixels.setPixelColor(6, pixels.Color(200,0,0));
+		  pixels.setPixelColor(7, pixels.Color(200,0,0));
+		  pixels.setPixelColor(8, pixels.Color(200,0,0));
+		  pixels.setPixelColor(9, pixels.Color(200,0,0));
+		  pixels.setPixelColor(11, pixels.Color(200,0,0));
+		  pixels.setPixelColor(12, pixels.Color(200,0,0));
+		  pixels.setPixelColor(13, pixels.Color(200,0,0));
+		  pixels.setPixelColor(14, pixels.Color(200,0,0));
+		  pixels.setPixelColor(15, pixels.Color(200,0,0));
+		  pixels.setPixelColor(16, pixels.Color(200,0,0));
+		  pixels.setPixelColor(17, pixels.Color(200,0,0));
+		  pixels.setPixelColor(18, pixels.Color(200,0,0));
+		  pixels.setPixelColor(19, pixels.Color(200,0,0));  
+		  pixels.show();
+		  }
+		  else
+		  {
+		  pixels.clear();
+		  pixels.show();
+		  }
+		 }
+		}
+	}
+	delay(20);  
+  }
