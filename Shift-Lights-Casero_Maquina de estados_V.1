@@ -1,0 +1,400 @@
+ /*SHIFT LIGHTS / CONTADOR RPM    PARA MEGANE 1.6 16V  by Fermín para la comunidad PetrolheadGarage*/
+
+//Este proyecto es un contador de rpm para fabricar unas luces de cambio con una tira LED direccionable
+//Se ha realizado para una tira de 18 LEDs RGB WS2812B
+//La señal de RPM en este caso se cogerá de la señal del tacómetro que envia la ECU al cuadro de instrumentos
+//En el caso del Megane esta señal es una onda cuadrada que varia su frecuencia 1Hz son 30 rpm ----> a 3000 rpm la señal es de 100Hz (2 Pulsos por revolucion del cigüeñal)
+
+//PetrolheadGarage ni ninguno de sus integrantes será responsable de cualquier daño producido por este código, tutorial y/o vídeo relacionado
+
+
+// En este codigo primero, encontraras lo que pasara en cada estado dentro de diferentes funciones,
+// seguido de esto, parecen otras funciones que se usan para cambiar de un estado a otro. Finalmente, aparecera el
+// bucle principal donde se compruba que no se llame a ninguna funcion si no se va a realizar ninguna tarea.
+
+
+
+// Revoluciones a las que cambian los colores
+#define RPM1 5100                           //rpm para encender el 1er LED
+#define RPM2 5200                           //rpm para encender el 2o LED
+#define RPM3 5300                           //rpm para encender el 3er LED
+#define RPM4 5400                           //rpm para encender el 4o LED
+#define RPM5 5500                           //rpm para encender el 5o LED
+#define RPM6 5600                           //rpm para encender el 6o LED
+#define RPM7 5700                           //rpm para encender el 7o LED
+#define RPM8 5800                           //rpm para encender el 8o LED
+#define RPM9 5900                           //rpm para encender el 9o LED
+#define RPM10 6000                          //rpm para encender todos los LED fijos violeta
+#define RPM11 6300                          //rpm para encender todos los LED parpadeando violeta
+#define RPM12 6500                          //rpm para encender todos los LED parpadeando rojo. Si reduciendo nos pasamos del corte del coche
+#define RPM13 8000                          //rpm mayor que el corte del motor, revolucines superiores a estas se consideran errores y se descartan
+
+
+#define PARPADEO 55                         //ms de duracion del parpadeo 
+
+#include <Adafruit_NeoPixel.h>              //Incluimos libreria Neopixel de Adafruit
+#ifdef __AVR__                              //Necesario para la tira de led con Arduino
+  #include <avr/power.h>
+#endif
+#define PIN            6                    //Pin de datos al que conectamos la tira led
+#define NUMPIXELS      20                   //numero de leds que vamos a controlar (1er led sera el numero 0 y ultimo sera NUMPIXELS-1)
+const byte holgura=50;                      //Variable con la que se controla la histeresis de encendido y apagadod de leds
+
+
+/************************************************************************
+ Varaiables glovales
+****************************************************************************/
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800); //Creamos el objeto "pixels" para la tira de led WS2812B
+int rpm = 0;                                //Variable donde se guardarán las rpm
+byte estado_actu = 0;                       //Variable donde se guardarán los estados
+byte estado_ante = 0;                        //Variable donde se guardarán los estados y poder comparar si ha cambiado del calculo anterior al actual
+unsigned long previousmicros = 0;           //Variable donde guardaremos el tiempo anterior para contabilizar la frecuencia
+unsigned long currentmicros = 0;            //Variable donde guardaremos el tiempo actual para contabilizar la frecuencia
+unsigned long periodo = 30000000;           //Variable donde guardaremos la duracion entre interrupciones. Iniciamos en 30000000 para que el primer calculo de rpm no sea infinito
+unsigned long millis_anteriores = 0;        //Variable donde guardaremos el tiempo anterior para el parpadeo
+boolean onoff = false;
+boolean actualizar_rpm = false;
+unsigned long millis_actuales=0;  //Almacenamos los ms actuales para el parpadeo de los leds
+
+
+/************************************************************************
+ Estados definidos en cada estados se encienden y pagan algunos leds
+****************************************************************************/
+void Estadoapagado()// todo apagado este estado con el estado J y K para hacer el parpadeo y para ira a bajas revoluciones
+{
+      pixels.clear();
+}
+
+void EstadoA()
+{
+  pixels.setPixelColor(1, pixels.Color(0,60,7));
+  pixels.setPixelColor(19, pixels.Color(0,60,7));
+  pixels.setPixelColor(2, pixels.Color(0,0,0)); // Apagamos los led siguientes por si estabos bajando de estado
+  pixels.setPixelColor(18, pixels.Color(0,0,0));
+}
+
+void EstadoB()
+{
+  pixels.setPixelColor(2, pixels.Color(0,60,7));
+  pixels.setPixelColor(18, pixels.Color(0,60,7));
+  pixels.setPixelColor(3, pixels.Color(0,0,0));
+  pixels.setPixelColor(17, pixels.Color(0,0,0));
+}
+
+void EstadoC()
+{
+  pixels.setPixelColor(3, pixels.Color(0,60,7));
+  pixels.setPixelColor(17, pixels.Color(0,60,7));
+  pixels.setPixelColor(4, pixels.Color(0,0,0));
+  pixels.setPixelColor(16, pixels.Color(0,0,0));
+}
+
+void EstadoD()
+{
+  pixels.setPixelColor(4, pixels.Color(60,5,0));
+  pixels.setPixelColor(16, pixels.Color(60,5,0));
+  pixels.setPixelColor(5, pixels.Color(0,0,0));
+  pixels.setPixelColor(15, pixels.Color(0,0,0));
+}
+
+void EstadoE()
+{
+  pixels.setPixelColor(5, pixels.Color(60,5,0));
+  pixels.setPixelColor(15, pixels.Color(60,5,0));
+  pixels.setPixelColor(5, pixels.Color(0,0,0));
+  pixels.setPixelColor(15, pixels.Color(0,0,0));
+}
+
+void EstadoF()
+{
+  pixels.setPixelColor(6, pixels.Color(60,5,0));
+  pixels.setPixelColor(14, pixels.Color(60,5,0));
+  pixels.setPixelColor(5, pixels.Color(0,0,0));
+  pixels.setPixelColor(15, pixels.Color(0,0,0));
+}
+
+void EstadoG()
+{
+  pixels.setPixelColor(7, pixels.Color(15,0,60));
+  pixels.setPixelColor(13, pixels.Color(15,0,60));
+  pixels.setPixelColor(5, pixels.Color(0,0,0));
+  pixels.setPixelColor(15, pixels.Color(0,0,0));
+}
+
+void EstadoH()
+{
+  pixels.setPixelColor(8, pixels.Color(15,0,60));
+  pixels.setPixelColor(12, pixels.Color(15,0,60));
+  pixels.setPixelColor(5, pixels.Color(0,0,0));
+  pixels.setPixelColor(15, pixels.Color(0,0,0));
+}
+
+void EstadoI()// todos encendidos
+{
+  pixels.setPixelColor(9, pixels.Color(15,0,60));
+  pixels.setPixelColor(11, pixels.Color(15,0,60));
+  pixels.setPixelColor(5, pixels.Color(0,0,0));
+  pixels.setPixelColor(15, pixels.Color(0,0,0));
+}
+
+void EstadoJ()//todos encendidos en violeta
+{
+  pixels.setPixelColor(1, pixels.Color(100,0,70));
+  pixels.setPixelColor(2, pixels.Color(100,0,70));
+  pixels.setPixelColor(3, pixels.Color(100,0,70));
+  pixels.setPixelColor(4, pixels.Color(100,0,70));
+  pixels.setPixelColor(5, pixels.Color(100,0,70));
+  pixels.setPixelColor(6, pixels.Color(100,0,70));
+  pixels.setPixelColor(7, pixels.Color(100,0,70));
+  pixels.setPixelColor(8, pixels.Color(100,0,70));
+  pixels.setPixelColor(9, pixels.Color(100,0,70));
+  pixels.setPixelColor(11, pixels.Color(100,0,70));
+  pixels.setPixelColor(12, pixels.Color(100,0,70));
+  pixels.setPixelColor(13, pixels.Color(100,0,70));
+  pixels.setPixelColor(14, pixels.Color(100,0,70));
+  pixels.setPixelColor(15, pixels.Color(100,0,70));
+  pixels.setPixelColor(16, pixels.Color(100,0,70));
+  pixels.setPixelColor(17, pixels.Color(100,0,70));
+  pixels.setPixelColor(18, pixels.Color(100,0,70));
+  pixels.setPixelColor(19, pixels.Color(100,0,70)); 
+}
+
+void EstadoK()//todos encendidos en rojo
+{      
+  pixels.setPixelColor(1, pixels.Color(150,0,105));
+  pixels.setPixelColor(2, pixels.Color(150,0,105));
+  pixels.setPixelColor(3, pixels.Color(150,0,105));
+  pixels.setPixelColor(4, pixels.Color(150,0,105));
+  pixels.setPixelColor(5, pixels.Color(150,0,105));
+  pixels.setPixelColor(6, pixels.Color(150,0,105));
+  pixels.setPixelColor(7, pixels.Color(150,0,105));
+  pixels.setPixelColor(8, pixels.Color(150,0,105));
+  pixels.setPixelColor(9, pixels.Color(150,0,105));
+  pixels.setPixelColor(11, pixels.Color(150,0,105));
+  pixels.setPixelColor(12, pixels.Color(150,0,105));
+  pixels.setPixelColor(13, pixels.Color(150,0,105));
+  pixels.setPixelColor(14, pixels.Color(150,0,105));
+  pixels.setPixelColor(15, pixels.Color(150,0,105));
+  pixels.setPixelColor(16, pixels.Color(150,0,105));
+  pixels.setPixelColor(17, pixels.Color(150,0,105));
+  pixels.setPixelColor(18, pixels.Color(150,0,105));
+  pixels.setPixelColor(19, pixels.Color(150,0,105));  
+}
+
+void EstadoL()//todos encendidos en rojo
+{
+  pixels.setPixelColor(1, pixels.Color(200,0,0));
+  pixels.setPixelColor(2, pixels.Color(200,0,0));
+  pixels.setPixelColor(3, pixels.Color(200,0,0));
+  pixels.setPixelColor(4, pixels.Color(200,0,0));
+  pixels.setPixelColor(5, pixels.Color(200,0,0));
+  pixels.setPixelColor(6, pixels.Color(200,0,0));
+  pixels.setPixelColor(7, pixels.Color(200,0,0));
+  pixels.setPixelColor(8, pixels.Color(200,0,0));
+  pixels.setPixelColor(9, pixels.Color(200,0,0));
+  pixels.setPixelColor(11, pixels.Color(200,0,0));
+  pixels.setPixelColor(12, pixels.Color(200,0,0));
+  pixels.setPixelColor(13, pixels.Color(200,0,0));
+  pixels.setPixelColor(14, pixels.Color(200,0,0));
+  pixels.setPixelColor(15, pixels.Color(200,0,0));
+  pixels.setPixelColor(16, pixels.Color(200,0,0));
+  pixels.setPixelColor(17, pixels.Color(200,0,0));
+  pixels.setPixelColor(18, pixels.Color(200,0,0));
+  pixels.setPixelColor(19, pixels.Color(200,0,0)); 
+}
+
+
+/***************************************
+  Transiciones de un estado a otro
+**************************************/
+
+
+void Transicioninit()// la unica posibilidad es subir de estado
+{
+  if(rpm >RPM1+holgura)
+    estado_actu=2;
+}
+
+void TransicionA()// las posibles transiciones de estados son: subir al siguiente estado o volver al anterior el primer estado sera el 1
+{
+  if(rpm <RPM1)
+    estado_actu=1;
+  if(rpm >= RPM2+holgura)
+    estado_actu=3;
+}
+
+
+void TransicionB()// las posibles transiciones de estados son subir al siguiente estado 4 o volver al anterior 2.
+{
+  if(rpm <RPM2)
+    estado_actu=2;
+  if(rpm >= RPM3+holgura)
+    estado_actu=4;
+}
+
+void TransicionC()
+{
+  if(rpm <RPM3)
+    estado_actu=3;
+  if(rpm > RPM4+holgura)
+    estado_actu=5;
+}
+
+void TransicionD()
+{
+  if(rpm <RPM4)
+    estado_actu=4;
+  if(rpm > RPM5+holgura)
+    estado_actu=6;
+}
+
+void TransicionE()
+{
+  if(rpm <RPM5)
+    estado_actu=5;
+  if(rpm > RPM6+holgura)
+    estado_actu=7;
+}
+
+void TransicionF()
+{
+  if(rpm <RPM6)
+    estado_actu=6;
+  if(rpm > RPM7+holgura)
+    estado_actu=8;
+}
+
+void TransicionG()
+{
+  if(rpm <RPM7)
+    estado_actu=7;
+  if(rpm > RPM8+holgura)
+    estado_actu=9;
+}
+
+
+void TransicionH()
+{
+  if(rpm <RPM8)
+    estado_actu=8;
+  if(rpm > RPM9+holgura)
+    estado_actu=10;
+}
+
+void TransicionI()
+{
+  if(rpm <RPM9)
+    estado_actu=9;
+  if(rpm > RPM10+holgura)
+    estado_actu=11;
+}
+
+void TransicionJ()
+{
+  if(rpm <RPM10)
+    estado_actu=10;
+  if(rpm > RPM11+holgura)
+    estado_actu=12;
+}
+
+void TransicionK()
+{
+  if(rpm <RPM11)
+    estado_actu=11;
+  if(rpm > RPM12+holgura)
+    estado_actu=13;
+}
+
+void TransicionL()
+{
+  if(rpm <RPM12)
+    estado_actu=12;
+}
+
+/***************************************
+  Empieza el codigo principal
+**************************************/
+void setup() 
+{
+  pixels.begin();                           //Inicializamos la tira led
+  pixels.clear();                           //Apagamos todos los LED
+  attachInterrupt(0, Medir_RPM, FALLING);          //Activamos la interrupcion 0 (pin 2 en el Arduino)
+}
+
+void Medir_RPM()                                  //Funcion a realizar en cada interrupcion externa del pin 2
+{
+  currentmicros = micros();                 //Almacenamos los us transcurridos en la variable currentmicros
+  actualizar_rpm=true;
+} 
+
+void loop() 
+{
+  if(actualizar_rpm)//Hace que solo se comprube si hay que cambiar el estado si se ha ejecutado la interrupción.
+  {  
+    actualizar_rpm=false;
+    periodo = currentmicros - previousmicros; //El periodo de la señal serán los us actuales menos los us anteriores
+    previousmicros = currentmicros;           //Igualamos us actuales a us anteriores para calcular el proximo periodo
+    rpm = 30000000/periodo;                   //Variable para el parpadeo de LEDs. Se utilizará para cambiar de estado la tira de LEDs entre encendido y apagado
+    if(rpm<RPM13)
+    {
+      switch(estado_ante)
+      {
+        case 1:  Transicioninit();  break;   
+        case 2:  TransicionA();     break;
+        case 3:  TransicionB();     break;
+        case 4:  TransicionC();     break;
+        case 5:  TransicionD();     break;
+        case 6:  TransicionE();     break;
+        case 7:  TransicionF();     break;
+        case 8:  TransicionG();     break;
+        case 9:  TransicionH();     break;
+        case 10: TransicionI();     break;
+        case 11: TransicionJ();     break;
+        case 12: TransicionK();     break;
+        case 13: TransicionL();     break;
+      }
+      
+      if(estado_actu != estado_ante)      // Si se produce un cambio de estado se activan los leds del nuevo estado
+      {
+        estado_ante=estado_actu;
+      switch(estado_ante)
+      {
+        case 1:  Estadoapagado();   break; //rpm <RPM1
+        case 2:  EstadoA();       break; //rpm > RPM1+50 && rpm <RPM2
+        case 3:  EstadoB();       break; //rpm > RPM2+50 && rpm <RPM3
+        case 4:  EstadoC();       break; //rpm > RPM3+50 && rpm <RPM4
+        case 5:  EstadoD();       break; //rpm > RPM4+50 && rpm <RPM5
+        case 6:  EstadoE();       break; //rpm > RPM5+50 && rpm <RPM6
+        case 7:  EstadoF();       break; //rpm > RPM6+50 && rpm <RPM7
+        case 8:  EstadoG();       break; //rpm > RPM7+50 && rpm <RPM8
+        case 9:  EstadoH();       break; //rpm > RPM8+50 && rpm <RPM9
+        case 10: EstadoI();       break; //rpm > RPM9+50 && rpm <RPM10
+        case 11: EstadoJ();       break; //rpm > RPM10+50 && rpm <RPM11
+        case 12: EstadoK();       break; //rpm > RPM11+50 && rpm <RPM12
+        case 13: EstadoL();       break; //rpm > RPM12+50 && rpm <RPM13
+      }
+        pixels.show(); 
+      }
+    }
+  }
+  if (estado_ante== 12 || estado_ante== 13) //Hacer que los estados que parpadean parpaden 
+  {
+    if(millis_actuales - millis_anteriores > PARPADEO)
+    {
+      onoff = !onoff;
+      millis_anteriores = millis_actuales;
+      if(onoff == false)
+      {
+        if(estado_ante== 12)
+          EstadoK();
+        else
+          EstadoL();
+      }
+      else
+      {
+        pixels.clear();
+        pixels.show();
+      }
+    }
+  }
+}
